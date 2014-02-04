@@ -1,0 +1,359 @@
+<!DOCTYPE HTML>
+<html>
+<title>Kiva Field Partner Explorer</title>
+<meta charset="utf-8" />
+<head>
+<script src="//cdnjs.cloudflare.com/ajax/libs/d3/3.2.2/d3.v3.min.js"></script>
+<style>
+body 
+{
+	font-family: "Helvetica Neue", Helvetica, Arial, sans-serif;
+	margin: auto;
+	position: relative;
+	width: 960px;
+}
+
+a, a:link, a:visited, a:hover
+{
+	text-decoration: none;
+	font-weight: bold;
+}
+
+a, a:link, a:visited
+{
+	color: #333;
+}
+
+a:hover
+{
+	color: #000;
+}
+
+#readout 
+{
+	position: absolute; 
+	text-align: center; 
+}
+
+#footer 
+{
+	font-size: .7em;
+	margin-bottom: 20px;
+}
+</style>
+</head>
+
+<body>
+	<script type="text/javascript">
+	
+	//	loads country codes and builds two hashes, one of continents 
+	//	by continent code and one of contients by country code
+	function loadCountryCodes()
+	{
+		d3.json
+		(
+			"country-codes.json",
+			function(error,data)
+			{
+				for(var i=0;i<data.length;i++)
+				{
+					var row = data[i];
+					var continentCode = row.continent;
+					var countryCode = row.a2;
+					
+					var continent = continents[ continentCode ];
+					
+					if( continent == null )
+					{
+						continent = {name:row.continent_name,children:[],codes:[]};
+						continents[ continentCode ] = continent;
+						
+						root.children.push( continent );
+					}
+					
+					continentsByCountry[ countryCode ] = continent;
+					
+					continent.codes.push( row.a2 );
+				}
+				
+				loadPartners();
+			}
+		);
+	}
+	
+	function loadPartners()
+	{
+		var url = "http://api.kivaws.org/v1/partners.json";
+		
+		d3.json
+		( 
+			url,
+			function(error,data)
+			{
+				var index = 0;
+				
+				for(var i=0;i<data.partners.length;i++)
+				{
+					var partner = partners[ data.partners[i].id ];
+					
+					if( partner == null )
+					{
+						partner = {index:index++,name:data.partners[i].name,children:[]};
+						partners[ data.partners[i].id ] = partner;
+					}
+					
+					for(var j=0;j<data.partners[i].countries.length;j++)
+					{
+						var countryCode = data.partners[i].countries[j].iso_code;
+						var country = countries[countryCode];
+	
+						if( country == null )
+						{
+							country = {index:index++,name:data.partners[i].countries[j].name,children:[]};
+							countries[ data.partners[i].countries[j].iso_code ] = country;
+	
+							if( continentsByCountry[countryCode] )
+								continentsByCountry[countryCode].children.push( country );
+							else
+								console.log( "couldn't find contient for " + countryCode );
+						}
+	
+						var clone = JSON.parse(JSON.stringify(partner));
+						
+						country.children.push( clone );
+					}
+				}
+	
+				sortBySize(root);
+	
+				if( DEBUG ) console.log( root );
+		
+				x = d3.scale.linear()
+			   		.range([0, 2 * Math.PI]);
+		   		
+				y = d3.scale.sqrt()
+			    	.range([0, radius]);
+	
+		    	fs = d3.scale.linear().range([2,.5]).domain([0,3])
+		    	
+				var svg = d3.select("#vis")
+					.append("svg")
+						.attr("width",width)
+						.attr("height",height)
+					.append("g")
+						.attr("transform","translate(" + width/2 + "," + height * .52 + ")");
+				
+				var partition = d3.layout.partition()
+					.sort(null)
+					.value( function(d){ return 1000; } );
+				
+				arc = d3.svg.arc()
+					.startAngle( function(d) { return Math.max(0,Math.min(2*Math.PI,x(d.x))); } )
+					.endAngle( function(d) { return Math.max(0,Math.min(2*Math.PI,x(d.x+d.dx))); } )
+					.innerRadius( function(d) { return Math.max(0,y(d.y)); } )
+					.outerRadius( function(d) { return Math.max(0,y(d.y+d.dy)); } );
+				
+				var g = svg.selectAll("g")
+					.data(partition.nodes(root))
+					.enter()
+					.append("g")
+						.on("mouseover",mouseover)
+						.on("mouseout",mouseout)
+						.on("click",click);
+				
+				path = g.append("path")
+					.attr("d",arc)
+					.style("stroke","#fff")
+					.style("fill", fill)
+					.style("fill-opacity", fillOpacity);
+	
+				d3.select("#readout").style("top","20px");
+				
+				showText(TEXT_DEFAULT);
+			}
+		);
+	}
+	
+	function arcColor(d)
+	{
+		if( d.depth == 1 || d.parent == undefined ) return "#999";
+		if( d.depth == 3 ) d = d.parent;
+	
+		return color( d.parent.children.indexOf( d ) );
+	}
+	
+	function fill(d)
+	{
+		if( !d.depth ) return "#999";
+		
+		return instances != null && (instances.indexOf(d)>-1 || instances.indexOf(d.parent)>-1) ? arcColor(d) : "#999"
+	}
+	
+	function fillOpacity(d)
+	{
+		if( !d.depth ) return .01;
+		
+		return instances != null ? (instances.indexOf(d)>-1 || instances.indexOf(d.parent)>-1 ? 1 : .5) : .9;
+	}
+	
+	function getInstances(s,t,r)
+	{
+		t = t || root;
+		r = r || [];
+		
+		if(s.name == t.name) 
+			r.push(t);
+		
+		if(t.children)
+			for(var i=0;i<t.children.length;i++)
+				getInstances(s,t.children[i],r);
+	
+		return r;
+	}
+	
+	function click(d)
+	{
+		path.transition()
+	    	.duration(750)
+	    	.attrTween("d", arcTween(d));
+	}
+	
+	function mouseover(d)
+	{
+		if( !d.depth ) return;
+		
+		instances = getInstances(d);
+		
+		var title = [ "<b>" + d.name + "</b>" ];
+		
+		//	add countries 
+		if( d.parent )
+		{
+			if( d.depth == 3 )
+			{
+				var siblingCountries = [];
+				
+				for(var i=0;i<instances.length;i++)
+					siblingCountries.push( instances[i].parent.name );
+				
+				title.push( "(" + siblingCountries.join(", ") + ")" );
+			}
+			else if( d.parent.depth > 0 ) 
+				title[0] += " (" + d.parent.name + ")";
+		}
+		
+		if( d.children )
+		{
+			var titleParts = [];
+			
+			if( d.depth == 1 ) 
+			{
+				title.push( d.children.length + " countries active" );
+			}
+			
+			if( d.depth == 1 )
+			{
+				var l = 0,lu=0;
+				var unique = {};
+				
+				for(var i=0;i<d.children.length;i++)
+				{
+					if( !d.children[i].children ) continue;
+					
+					l += d.children[i].children.length;
+						
+					for(var j=0;j<d.children[i].children.length;j++)
+					{
+						if( unique[ d.children[i].children[j].index ] == null )
+						{
+							unique[ d.children[i].children[j].index ] = 1;
+							lu ++;
+						}
+					}
+				}
+				
+				title.push( lu + " field partners" );
+				
+				if( l != lu ) 
+					title[title.length-1] += " (" + l + " total)"
+			}
+			else if( d.depth == 2 )
+			{
+				 title.push( d.children.length + " field partners" );
+			}
+		}
+		
+		showText( title.join("<br/>") );
+		
+		d3.selectAll("path").style("fill-opacity",fillOpacity );
+		d3.selectAll("path").style("fill",fill);
+		
+		if( DEBUG ) console.log(d);
+	}
+	
+	function mouseout()
+	{
+		instances = null;
+		
+		showText(TEXT_DEFAULT);
+		
+		d3.selectAll("path").style("fill-opacity",fillOpacity);
+		d3.selectAll("path").style("fill",fill);
+	}
+	
+	function showText( text )
+	{
+		d3.select("#readout").html( text );
+		d3.select("#readout").style("left",(width/2-parseInt(d3.select("#readout").style("width"))/2)+"px");
+	}
+	
+	function sortBySize(d)
+	{
+		if( d.children )
+		{
+			d.children.sort( function(a,b){ return a.children.length>b.children.length?-1:1; } );
+	
+			for(var i=0;i<d.children.length;i++)
+				sortBySize( d.children[i] );
+		}
+	}
+	
+	function arcTween(d) 
+	{
+		var xd = d3.interpolate(x.domain(), [d.x, d.x + d.dx]),
+			yd = d3.interpolate(y.domain(), [d.y, 1]),
+			yr = d3.interpolate(y.range(), [d.y ? 20 : 0, radius]);
+		
+		return function(d, i) 
+		{
+			return i
+		        ? function(t) { return arc(d); }
+		        : function(t) { x.domain(xd(t)); y.domain(yd(t)).range(yr(t)); return arc(d); };
+		};
+	}
+	
+	var DEBUG = false;
+	var TEXT_DEFAULT = "<a href='http://www.kiva.org/partners' target='_blank'>Kiva Field Partners</a>";
+	
+	var data;
+	var root = {name:'continents',children:[]};
+	
+	var continents = [];
+	var continentsByCountry = [];
+	var countries = [];
+	var partners = [];
+	
+	var width = 960,height=650,radius=Math.min(width,height)/2-50,color=d3.scale.category20c(),x,y,fs;
+	var arc,path,instances;
+	
+	loadCountryCodes();
+	</script>
+	
+	<div id="readout"></div>
+	<div id="vis"></div>
+	
+	<div id="footer">
+		Data from <a href="http://build.kiva.org/api#GET*%7Cpartners" target="_blank">Kiva API</a>, based on <a href="http://bl.ocks.org/mbostock" target="_blank">mbostock</a>'s block <a href="http://bl.ocks.org/mbostock/4348373" target="_blank">#4348373</a>
+	</div>
+</body>
+</html>
