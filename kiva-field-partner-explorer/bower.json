@@ -1,0 +1,7 @@
+{
+  "name": "kiva-field-partner-explorer",
+  "version": "0.0.0-1",
+  "dependencies": {
+    "d3": "3.4.6"
+  }
+}
