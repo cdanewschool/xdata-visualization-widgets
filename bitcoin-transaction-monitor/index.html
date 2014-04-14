@@ -4,12 +4,13 @@
 <title>Bitcoin Transaction Monitor</title>
 <meta charset="utf-8" />
 <!-- 	vendor css -->
-<link href="//cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/2.3.2/css/bootstrap.min.css" rel="stylesheet" media="screen">
-<link href="//cdnjs.cloudflare.com/ajax/libs/noUiSlider/3.1.1/nouislider.fox.min.css" rel="stylesheet" media="screen">
+<link href="bower_components/bootstrap/dist/css/bootstrap.min.css" rel="stylesheet" media="screen">
+<link href="bower_components/nouislider/jquery.nouislider.css" rel="stylesheet" media="screen">
 <!-- 	vendor js -->
-<script src="//cdnjs.cloudflare.com/ajax/libs/d3/3.2.2/d3.min.js"></script>
-<script src="//cdnjs.cloudflare.com/ajax/libs/jquery/2.0.3/jquery.min.js"></script>
-<script src="//cdnjs.cloudflare.com/ajax/libs/noUiSlider/3.1.1/jquery.nouislider.min.js"></script>
+<script src="bower_components/jquery/dist/jquery.min.js"></script>
+<script src="bower_components/d3/d3.min.js"></script>
+<script src="bower_components/bootstrap/dist/js/bootstrap.min.js"></script>
+<script src="bower_components/nouislider/jquery.nouislider.js"></script>
 
 <script type="text/javascript">
 $(document).ready
@@ -20,13 +21,22 @@ $(document).ready
 		$("#slider").noUiSlider
 			( 
 				{
-					range:[MIN_MINUTES,MAX_MINUTES],
-					start:3,
-					handles: 1,
-					slide:function(){ onUpdateTimespan($(this).val().toFixed(0)); }
+					connect: "lower",
+					range:
+					{
+						"min":MIN_MINUTES,"max":MAX_MINUTES
+					},
+					start: 3
 				}
 			)
-			.css("margin-left",margin.left+"px");
+			.on
+			(
+				'set',
+				function()
+				{ 
+					onUpdateTimespan( parseFloat($(this).val()).toFixed(0) ); 
+				}
+			);
 		
 		initWebSocket();
 		initChart();
@@ -124,21 +134,7 @@ function initChart()
 
 	var yaxis = svg.append("g")
 		.attr("class","axis yaxis").call(yAxis);
-		
-	/*
-	xaxis.append("text")
-			.attr("class","axisLabel")
-			.attr("text-anchor","middle")
-			.attr("transform", "translate(" + (width-margin.left-margin.right)/2 + "," + 40 + ")")
-			.text("Transaction Time");
-	
-	yaxis.append("text")
-		.attr("class","axisLabel")
-		.attr("text-anchor","middle")
-		.attr("transform", "rotate(-90 0 0),translate(-" + (height - margin.top - margin.bottom)/2 + ",-" + (margin.left*.75) + ")")
-		.text("Transaction Amount (BTC)");
-	*/
-	
+
 	onUpdateTimespan();
 	
 	start();
@@ -163,8 +159,6 @@ function refresh()
 	
 	var maxDisplayable = new Date();
 	maxDisplayable.setUTCMilliseconds( maxDisplayable.getUTCMilliseconds() - (MAX_MINUTES * MINUTE) );
-	
-	console.log( activity.length, data.length );
 	
 	var dots = svg.selectAll(".node")
 		.data( data, function(d) { return d.index; } );
@@ -207,7 +201,7 @@ function updateXAxis()
 	
 	x.domain( [ new Date(today.getTime() - MINUTE * minutesDisplayed), today ] );
 	
-	svg.select(".xaxis").transition().duration().call(xAxis);
+	svg.select(".xaxis").transition().duration(0).call(xAxis);
 	
 	svg.selectAll("g.node").transition().duration(0).attr("transform", function(d) { return "translate(" + x(d.date) + "," + y(d.amount) + ")"; });
 }
@@ -288,7 +282,7 @@ var x = d3.time.scale().range([0, width - margin.left - margin.right]);
 var y = d3.scale.pow().exponent(.5).domain([0,100,1000]).range([h,h/2,0]);
 
 var xAxis = d3.svg.axis().scale(x).orient("bottom").ticks(6).tickPadding(10).tickSize(-chartHeight,0,-chartHeight).tickFormat(timeFormat);
-var yAxis = d3.svg.axis().scale(y).orient("left").tickFormat(function(d) { return currencyFormatter(d) + " BTC"; }).tickPadding(10).tickSize(-chartWidth,0,-chartWidth);/*.tickFormat(logFormat);*/
+var yAxis = d3.svg.axis().scale(y).orient("left").tickFormat(function(d) { return currencyFormatter(d) + " BTC"; }).tickPadding(10).tickSize(-chartWidth,0,-chartWidth);
 
 var activity = [];
 var index = 0;
@@ -298,34 +292,27 @@ body{ margin: 20px; }
 #chart { margin-top: 50px; }
 #footer { margin-top: 50px; font-size: .8em; }
 
-.chart { font-family: arial,sans-serif; font-size: .8em; }
-
-.axisLabel { font-size: 1.2em; font-weight: bold; fill: #545454; }
-
 path.domain { fill: none; stroke: #666; stroke-width: 1; } 
-
 line { stroke: #ccc; stroke-width: .5; stroke-linecap: "square" }
-
+.chart { font-family: arial,sans-serif; font-size: .8em; }
+.axisLabel { font-size: 1.2em; font-weight: bold; fill: #545454; }
 .transaction circle, .block circle, .trade circle { fill: #fff; fill-opacity: 1; stroke-width:2px; }
 .transaction circle { stroke: #afd8fb; }
 .block circle { stroke: #edc300; }
 .trade circle { stroke: #cb4c48; }
 
-/*	boostrap overrides	*/
-.popover { font-size: .7em; max-width: 500px; }
-.popover .header { font-size: 1.1em; margin-bottom: 10px; line-height: 1.3em; }
-#slider { display: inline-block; }
-#slider-value { margin-left: 50px; font-size: .9em; }
+#slider { width: 500px; margin-left: 100px; }
+#slider-value { margin-left: 100px; font-size: .9em; }
 </style>
 </head>
 
 <body>
 
 	<div id="chart"></div>
-		
+	
 	<div>
 		<div id="slider" class="noUiSlider"></div>
-		<span id="slider-value"></span>
+		<div id="slider-value"></div>
 	</div>
 	
 	<div id="footer">

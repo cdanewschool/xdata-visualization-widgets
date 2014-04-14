@@ -1,0 +1,10 @@
+{
+  "name": "bitcoin-transaction-monitor",
+  "version": "0.0.0-1",
+  "dependencies": {
+    "bootstrap": "3.1.1",
+    "d3": "3.4.6",
+    "jquery": "2.1",
+    "nouislider": "6.0.0"
+  }
+}
